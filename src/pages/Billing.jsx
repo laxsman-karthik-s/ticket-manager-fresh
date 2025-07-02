@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
+import { chatWithOpenAI } from '../callOpenAI';
 import {
   BarChart,
   Bar,
@@ -16,55 +17,64 @@ export default function Billing() {
 
   useEffect(() => {
     const fetchBillingData = async () => {
-      const { data: userData, error: authError } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
+      try {
+        const { data: userData, error: authError } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
-        .from('monthly_billing_summary')
-        .select('*')
-        .eq('user_id', userId)
-        .order('month', { ascending: true });
+        if (authError || !userData?.user?.id) {
+          console.warn('User not logged in or token expired.');
+          return;
+        }
 
-      if (!error && data.length >= 6) {
-        setData(data);
+        const userId = userData.user.id;
 
-        const lastSix = data.slice(-6);
-        const lastFiveAvg = lastSix.slice(0, 5).reduce((acc, d) => acc + d.total_amount, 0) / 5;
-        const current = lastSix[5];
+        const { data, error } = await supabase
+          .from('monthly_billing_summary')
+          .select('*')
+          .eq('user_id', userId)
+          .order('month', { ascending: true });
 
-        if (current.total_amount > lastFiveAvg) {
-          const prompt = `Here are the past 5 months' bills: ${lastSix
-            .slice(0, 5)
-            .map(d => d.total_amount)
-            .join(', ')}, and the current month is ${current.total_amount}. What could be the reason for the hike in the latest bill?`;
+        if (error) {
+          console.error('Supabase fetch error:', error);
+          return;
+        }
 
-          try {
-            const response = await fetch('http://localhost:5000/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messages: [
-                  {
-                    role: 'system',
-                    content: 'You are a billing analyst. Explain bill hikes simply.'
-                  },
-                  {
-                    role: 'user',
-                    content: prompt
-                  }
-                ]
-              })
-            });
+        if (data.length >= 6) {
+          setData(data);
 
-            const result = await response.json();
-            const gptReply = result.choices?.[0]?.message?.content?.trim();
+          const lastSix = data.slice(-6);
+          const lastFiveAvg =
+            lastSix.slice(0, 5).reduce((acc, d) => acc + d.total_amount, 0) / 5;
+          const current = lastSix[5];
 
-            if (gptReply) setHikeReason(gptReply);
-          } catch (err) {
-            console.error('GPT error:', err);
-            setHikeReason('Could not analyze the hike. Please try again.');
+          if (current.total_amount > lastFiveAvg) {
+            const prompt = `Here are the past 5 months' bills: ${lastSix
+              .slice(0, 5)
+              .map((d) => d.total_amount)
+              .join(', ')}, and the current month is ${current.total_amount}. What could be the reason for the hike in the latest bill?`;
+
+            try {
+              const result = await chatWithOpenAI([
+                {
+                  role: 'system',
+                  content: 'You are a billing analyst. Explain bill hikes simply.'
+                },
+                {
+                  role: 'user',
+                  content: prompt
+                }
+              ]);
+
+              const gptReply = result.choices?.[0]?.message?.content?.trim();
+
+              if (gptReply) setHikeReason(gptReply);
+            } catch (err) {
+              console.error('GPT error:', err);
+              setHikeReason('Could not analyze the hike. Please try again.');
+            }
           }
         }
+      } catch (err) {
+        console.error('Unexpected error in billing fetch:', err);
       }
     };
 

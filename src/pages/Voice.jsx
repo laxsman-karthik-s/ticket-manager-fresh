@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import axios from 'axios';
 import { supabase } from '../supabase';
+import { chatWithOpenAI } from '../callOpenAI';
 
 export default function Voice() {
   const [text, setText] = useState('');
@@ -50,11 +50,18 @@ ETA: <number>
 
 Complaint: ${inputText}`;
 
-      const response = await axios.post('http://localhost:5000/api/chat', {
-        prompt: formattedPrompt,
-      });
+      const response = await chatWithOpenAI([
+        {
+          role: 'system',
+          content: 'You are a customer support agent.'
+        },
+        {
+          role: 'user',
+          content: formattedPrompt
+        }
+      ]);
 
-      const result = response.data.choices[0].message.content.trim();
+      const result = response.choices?.[0]?.message?.content?.trim() || '';
 
       const match = result.match(
         /Subject:\s*(.+?)\n+Description:\s*(.+?)\n+Priority:\s*(.+?)\n+Churn Risk:\s*(.+?)\n+ETA:\s*(\d+)/i
@@ -66,7 +73,7 @@ Complaint: ${inputText}`;
           description: match[2].trim(),
           priority: match[3].trim().toLowerCase(),
           churn_risk: match[4].trim().toLowerCase(),
-          eta_hours: parseInt(match[5].trim()),
+          eta_hours: parseInt(match[5].trim())
         };
       } else {
         return {
@@ -74,18 +81,18 @@ Complaint: ${inputText}`;
           description: result,
           priority: 'medium',
           churn_risk: 'medium',
-          eta_hours: 24,
+          eta_hours: 24
         };
       }
     } catch (err) {
-      console.error('❌ OpenAI Proxy error:', err);
+      console.error('❌ OpenAI error:', err);
       alert('Could not rephrase the complaint.');
       return {
         subject: 'Voice Complaint',
         description: inputText,
         priority: 'medium',
         churn_risk: 'medium',
-        eta_hours: 24,
+        eta_hours: 24
       };
     } finally {
       setLoading(false);
@@ -104,7 +111,7 @@ Complaint: ${inputText}`;
 
     const {
       data: { user },
-      error: authError,
+      error: authError
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -119,7 +126,7 @@ Complaint: ${inputText}`;
       priority: result.priority,
       churn_risk: result.churn_risk,
       eta_hours: result.eta_hours,
-      status: 'pending',
+      status: 'pending'
     });
 
     if (error) {
@@ -137,37 +144,23 @@ Complaint: ${inputText}`;
         <div className="col-12">
           <div
             className="card shadow border-0 p-5 rounded-4 mx-auto"
-            style={{
-              backgroundColor: '#fff',
-              maxWidth: '1300px',
-              width: '100%',
-            }}
+            style={{ backgroundColor: '#fff', maxWidth: '1300px', width: '100%' }}
           >
             <h3 className="fw-bold mb-4 text-primary">🎙 Submit a Voice Complaint</h3>
 
-            {/* Start/Stop Buttons */}
             <div className="row g-3 mb-4">
               <div className="col-md-6">
-                <button
-                  className="btn btn-success w-100"
-                  onClick={startRecording}
-                  disabled={recording}
-                >
+                <button className="btn btn-success w-100" onClick={startRecording} disabled={recording}>
                   <i className="bi bi-mic-fill me-2"></i> Start Recording
                 </button>
               </div>
               <div className="col-md-6">
-                <button
-                  className="btn btn-danger w-100"
-                  onClick={stopRecording}
-                  disabled={!recording}
-                >
+                <button className="btn btn-danger w-100" onClick={stopRecording} disabled={!recording}>
                   <i className="bi bi-stop-fill me-2"></i> Stop
                 </button>
               </div>
             </div>
 
-            {/* Voice Transcript (Full Width) */}
             <div className="mb-4">
               <label htmlFor="transcript" className="form-label fw-semibold text-muted">
                 Voice Transcript
@@ -183,7 +176,6 @@ Complaint: ${inputText}`;
               />
             </div>
 
-            {/* Complaint Summary */}
             {subject && (
               <div className="bg-light border rounded p-3 mb-4">
                 <h5 className="fw-semibold mb-3 text-dark">📄 Complaint Summary</h5>
@@ -195,7 +187,6 @@ Complaint: ${inputText}`;
               </div>
             )}
 
-            {/* Submit Button */}
             <div className="text-center mt-4">
               <button
                 className="fw-semibold px-5 py-2 border-0"

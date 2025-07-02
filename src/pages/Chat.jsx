@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
+import { chatWithOpenAI } from '../callOpenAI';
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
@@ -17,15 +18,10 @@ export default function Chat() {
       const newContext = context + `User: ${input}\n`;
       setContext(newContext);
 
-      const res = await fetch('http://localhost:5000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: 'system',
-              content: `
-You are a support assistant. Gather enough information about the user's complaint.
+      const openaiResponse = await chatWithOpenAI([
+        {
+          role: 'system',
+          content: `You are a support assistant. Gather enough information about the user's complaint.
 Once enough info is collected, respond only in this format:
 
 SUBJECT: <short title>
@@ -36,24 +32,20 @@ ETA: <number of hours>
 RESPONSE: An agent will be assigned to you shortly.
 
 Context:
-${newContext}
-              `
-            },
-            {
-              role: 'user',
-              content: input
-            }
-          ]
-        })
-      });
+${newContext}`
+        },
+        {
+          role: 'user',
+          content: input
+        }
+      ]);
 
-      const data = await res.json();
-      const botText = data.choices?.[0]?.message?.content;
-
+      const botText = openaiResponse.choices?.[0]?.message?.content;
       if (!botText) throw new Error('Invalid OpenAI response');
 
       setMessages(prev => [...prev, { sender: 'Support Bot', text: botText }]);
 
+      // Try extracting ticket data
       const subjectMatch = botText.match(/SUBJECT:\s*(.+)/i);
       const descMatch = botText.match(/DESCRIPTION:\s*([\s\S]+?)PRIORITY:/i);
       const priorityMatch = botText.match(/PRIORITY:\s*(high|medium|low)/i);
